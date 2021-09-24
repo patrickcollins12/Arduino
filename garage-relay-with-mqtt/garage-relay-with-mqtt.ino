@@ -1,7 +1,7 @@
 #include <WiFi.h>
 #include <MQTT.h>
 #include <neotimer.h>
-#include <config.h>
+#include "config.h"
 
 #define R_PWM 23 // Relay
 #define R_PWM_CH 0
@@ -33,7 +33,7 @@ void connect() {
   Serial.printf("connecting to mqtt://%s...", mqtt_host);
 
   // Get the MAC Address of the Wifi and make a unique mqtt client.
-  // mosquitto can only have one client connected at the same time with the same name.
+  // mqtt broker can only have one client connected at the same time with the same name.
   String mqtt = String("esp32-") + getMacAddress();
   char mqtt_client_name[300];
   mqtt.toCharArray(mqtt_client_name,300);
