@@ -40,7 +40,7 @@ void connect() {
 
 
   // make the broker send and offline message retained, when i go offline
-  client.setWill("/GD/Status", "offline", true, 1);
+  client.setWill(MQTT_PREFIX"/available", "offline", true, 1);
 
   while (!client.connect(mqtt_client_name, mqtt_username, mqtt_password)) {
     Serial.print(".");
@@ -51,14 +51,14 @@ void connect() {
 
   client.subscribe(mqtt_topic);
 
-  client.publish("/GD/Status", "online");
+  client.publish(MQTT_PREFIX"/available", "online",true,1);
   
   publishWifiStrength();
 }
 
 void pressGarageDoorRelay() {
     Serial.print("Garage Door Relay Activated");
-    client.publish("/GD/Log", "Relay activated" );
+    client.publish(MQTT_PREFIX"/log", "Relay activated" );
 
     ledcWrite(R_PWM_CH, 0);  
     delay(1000);
@@ -70,6 +70,7 @@ void pressGarageDoorRelay() {
 // read the AH1815 hall effect sensor 
 // 0 is when magnet is close. That is when door is closed.
 // 1 is when no magnet is present. That is when door is undefined.
+// implement: open, opening, closed or closing
 int isGarageOpen() {
    // CLSD  OPEN  CODE STATE
    // 0     0     -1    Error. Both magnets cannot be activated concurrently or a sensor is offline
@@ -79,6 +80,8 @@ int isGarageOpen() {
 
    int hclsd = digitalRead (HALL_SENSOR_CLSD);
    int hopen = digitalRead (HALL_SENSOR_OPEN);
+//   Serial.printf("CLOSED: %d, OPEN: %d\n",hclsd, hopen);
+   
    // 0 is activated
    if ( !hclsd && !hopen) {
        return -1;
@@ -99,6 +102,7 @@ int isGarageOpen() {
    }
 }
 
+// implement: open, opening, closed or closing
 int lastStatus=-0;
 void reportDoorStatus () {
     int status = isGarageOpen();
@@ -106,12 +110,19 @@ void reportDoorStatus () {
       char *statusstr;
       if (status ==  0 ) statusstr = "closed";
       if (status ==  1 ) statusstr = "open";
-      if (status ==  2 ) statusstr = "moving or stuck";
+      if (status ==  2 ) {
+        if (lastStatus = 0) {
+           statusstr = "opening";  
+        }
+        if (lastStatus = 1) {
+          statusstr = "closing";  
+        }
+      }
       if (status == -1 ) {
           statusstr = "error";
-          client.publish("/GD/Log", "Error: sensor offline or both activated" );
+          client.publish(MQTT_PREFIX"/log", "Error: sensor offline or both activated" );
       }
-      client.publish("/GD/DoorStatus", statusstr, true, 1);
+      client.publish(MQTT_PREFIX"/state", statusstr, true, 1);
     }
     lastStatus = status;
 }
@@ -122,21 +133,24 @@ void messageReceived(String &topic, String &payload) {
 
   if ( payload == "open" ) {
     if (isGarageOpen() ) {
-       client.publish("/GD/Log", "Open requested, but garage is already open. Aborting" );
+       client.publish(MQTT_PREFIX"/log", "Open requested, but garage is already open. Aborting" );
 
     } else {
-      client.publish("/GD/Log", "Closing door" );
+      client.publish(MQTT_PREFIX"/log", "Opening door" );
+      client.publish(MQTT_PREFIX"/state", "opening", true, 1);
+
       pressGarageDoorRelay();
     }
   }
 
   else if ( payload == "close" ) {
     if (isGarageOpen() ) {
-       client.publish("/GD/Log", "Opening door" );
+       client.publish(MQTT_PREFIX"/log", "Closing door" );
+       client.publish(MQTT_PREFIX"/state", "closing", true, 1);
        pressGarageDoorRelay();
     } else {
       // garage is already closed
-      client.publish("/GD/Log", "Close requested, but garage is already closed. Aborting" );
+      client.publish(MQTT_PREFIX"/log", "Close requested, but garage is already closed. Aborting" );
     }
   }
 
@@ -190,7 +204,7 @@ void loop() {
 
   if (!digitalRead(BUTTON)) {
     Serial.println("Button pressed\n");    
-    client.publish("/GD/Log", "button pressed");
+    client.publish(MQTT_PREFIX"/log", "button pressed");
     pressGarageDoorRelay();
   }
 
@@ -199,7 +213,7 @@ void loop() {
   }
 
 //  if (connectedStatusTimer.repeat()) {
-//     client.publish("/GD/Log", "online");
+//     client.publish(MQTT_PREFIX"/log", "online");
 //  }
 }
 
@@ -243,6 +257,6 @@ void publishWifiStrength() {
   
   char buf[300];
   sprintf(buf,"%s is %s (%d%% %ld dBm)", ssid, s, percent, signalStrength);
-  client.publish("/GD/Log", buf );
+  client.publish(MQTT_PREFIX"/log", buf );
   
 }
