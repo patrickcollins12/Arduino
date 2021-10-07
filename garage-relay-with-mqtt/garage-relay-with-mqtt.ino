@@ -16,49 +16,86 @@
 #define BUTTON 22
 
 WiFiClient net;
-MQTTClient client;
+MQTTClient mqtt_client;
 
 Neotimer hallReadTimer = Neotimer(1000/10);      // measure hall timer every 10th second
 //Neotimer connectedStatusTimer = Neotimer(1000*60); // ping every minute
 
-void connect() {
+
+
+String getMacAddress()
+{
+   uint8_t baseMac[6];
+
+   // Get MAC address for WiFi station
+   esp_read_mac(baseMac, ESP_MAC_WIFI_STA);
+
+   char baseMacChr[18] = {0};
+   sprintf(baseMacChr, "%02X%02X%02X%02X%02X%02X", baseMac[0], baseMac[1], baseMac[2], baseMac[3], baseMac[4], baseMac[5]);
+
+   String macAddress = String(baseMacChr);
+
+   return String(baseMacChr);
+}
+
+
+char mqtt_client_name[300];
+void setupMqttClientName() {
+    // Get the MAC Address of the Wifi and make a unique mqtt client.
+    // mqtt broker can only have one client connected at the same time with the same name.
+    String mqtt = String("esp32-") + getMacAddress();
+    mqtt.toCharArray(mqtt_client_name,300);
+}
+
+
+bool reconnectedWifi=false;
+void connectWifi() {
+
+    Serial.printf("connecting wifi %s ...", ssid);
+    while (WiFi.status() != WL_CONNECTED) {
+      Serial.print(".");
+      delay(100);
+    }
+    Serial.print(" done\n");
+    reconnectedWifi=true;
+
+}
+
+void connectMQTT() {
   
-  Serial.printf("connecting wifi %s ...", ssid);
-  while (WiFi.status() != WL_CONNECTED) {
-    Serial.print(".");
-    delay(100);
+  if (!mqtt_client.connected() ) {
+    
+    Serial.printf("connecting to mqtt://%s...", mqtt_host);
+
+    while (!mqtt_client.connect(mqtt_client_name, mqtt_username, mqtt_password)) {
+      Serial.print(".");
+      delay(100);
+    }
+    Serial.print(" done\n");
+  
+    // mpub -t "homeassistant/cover/garagedoor/config" -m '{ 
+
+//    const char *configr = R""""( { "name": "Garage Door", "~": "homeassistant/cover/garagedoor", "device_class":"garage", "state_topic":"~/state", "command_topic":"/GD/Command", "availability_topic": "~/available", "payload_available":"online", "payload_not_available":"offline", "qos":1, "retain":false, "optimistic": false, "payload_open": "open","payload_close": "close", "payload_stop": "click", "state_open": "open", "state_opening": "opening", "state_closed": "closed", "state_closing": "closing", "unique_id":"esp32_1234" } )"""";
+//    const char *configr = R""""( { "name": "Garage Door", "~": "homeassistant/cover/garagedoor" } )"""";
+//    const char *configr = R""""( abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz )"""";
+    String configr = "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz";
+
+    Serial.print(configr);
+    // make the broker send and offline message retainedwhen i go offline
+//    mqtt_client.setWill(MQTT_PREFIX"/available", "offline", true, 1);
+//    mqtt_client.publish(MQTT_PREFIX"/available", "online",true,0);
+    if (!mqtt_client.publish(MQTT_PREFIX"/config", configr, true, 0)) {
+      lwmqtt_err_t err = mqtt_client.lastError();
+      Serial.printf("Failed config publish: %d",err);
+    }
+    mqtt_client.subscribe(mqtt_topic);
   }
-  Serial.print(" done\n");
   
-  Serial.printf("connecting to mqtt://%s...", mqtt_host);
-
-  // Get the MAC Address of the Wifi and make a unique mqtt client.
-  // mqtt broker can only have one client connected at the same time with the same name.
-  String mqtt = String("esp32-") + getMacAddress();
-  char mqtt_client_name[300];
-  mqtt.toCharArray(mqtt_client_name,300);
-
-
-  // make the broker send and offline message retained, when i go offline
-  client.setWill(MQTT_PREFIX"/available", "offline", true, 1);
-
-  while (!client.connect(mqtt_client_name, mqtt_username, mqtt_password)) {
-    Serial.print(".");
-    delay(100);
-  }
-
-  Serial.print(" done\n");
-
-  client.subscribe(mqtt_topic);
-
-  client.publish(MQTT_PREFIX"/available", "online",true,1);
-  
-  publishWifiStrength();
 }
 
 void pressGarageDoorRelay() {
-    Serial.print("Garage Door Relay Activated");
-    client.publish(MQTT_PREFIX"/log", "Relay activated" );
+//    Serial.print("Garage Door Relay Activated");
+//    mqtt_client.publish(MQTT_PREFIX"/log", "Relay activated" );
 
     ledcWrite(R_PWM_CH, 0);  
     delay(1000);
@@ -120,9 +157,9 @@ void reportDoorStatus () {
       }
       if (status == -1 ) {
           statusstr = "error";
-          client.publish(MQTT_PREFIX"/log", "Error: sensor offline or both activated" );
+          mqtt_client.publish(MQTT_PREFIX"/log", "Error: sensor offline or both activated" );
       }
-      client.publish(MQTT_PREFIX"/state", statusstr, true, 1);
+      mqtt_client.publish(MQTT_PREFIX"/state", statusstr, true, 1);
     }
     lastStatus = status;
 }
@@ -133,11 +170,11 @@ void messageReceived(String &topic, String &payload) {
 
   if ( payload == "open" ) {
     if (isGarageOpen() ) {
-       client.publish(MQTT_PREFIX"/log", "Open requested, but garage is already open. Aborting" );
+       mqtt_client.publish(MQTT_PREFIX"/log", "Open requested, but garage is already open. Aborting" );
 
     } else {
-      client.publish(MQTT_PREFIX"/log", "Opening door" );
-      client.publish(MQTT_PREFIX"/state", "opening", true, 1);
+      mqtt_client.publish(MQTT_PREFIX"/log", "Opening door" );
+      mqtt_client.publish(MQTT_PREFIX"/state", "opening", true, 1);
 
       pressGarageDoorRelay();
     }
@@ -145,12 +182,12 @@ void messageReceived(String &topic, String &payload) {
 
   else if ( payload == "close" ) {
     if (isGarageOpen() ) {
-       client.publish(MQTT_PREFIX"/log", "Closing door" );
-       client.publish(MQTT_PREFIX"/state", "closing", true, 1);
+       mqtt_client.publish(MQTT_PREFIX"/log", "Closing door" );
+       mqtt_client.publish(MQTT_PREFIX"/state", "closing", true, 1);
        pressGarageDoorRelay();
     } else {
       // garage is already closed
-      client.publish(MQTT_PREFIX"/log", "Close requested, but garage is already closed. Aborting" );
+      mqtt_client.publish(MQTT_PREFIX"/log", "Close requested, but garage is already closed. Aborting" );
     }
   }
 
@@ -167,11 +204,12 @@ void setup() {
 
   // Note: Local domain names (e.g. "Computer.local" on OSX) are not supported
   // by Arduino. You need to set the IP address directly.
-  client.begin(mqtt_host, net);
-  client.onMessage(messageReceived);
+  mqtt_client.begin(mqtt_host, net);
+  mqtt_client.onMessage(messageReceived);
 
   // calls our utility connect function
-  connect();
+  connectWifi();
+  connectMQTT();
 
   // Setup the relay activator
   ledcSetup(R_PWM_CH, PWM_Freq, PWM_Res);
@@ -186,6 +224,7 @@ void setup() {
   hallReadTimer.start();
 //  connectedStatusTimer.start();
 
+  setupMqttClientName();
 
 }
 
@@ -194,17 +233,26 @@ void setup() {
 // MAIN LOOP
 void loop() {
   
-  client.loop();
+  mqtt_client.loop();
   delay(10);  // <- fixes some issues with WiFi stability
 
-  if (!client.connected()) {
+  if (WiFi.status() != WL_CONNECTED) {
+    connectWifi();
+  }
+  
+  if (!mqtt_client.connected()) {
     Serial.println("Not connected, trying again");
-    connect();
+    connectMQTT();
   }
 
+  if ( reconnectedWifi && mqtt_client.connected() ) {
+     publishWifiStrength();
+     reconnectedWifi=false;
+  }
+  
   if (!digitalRead(BUTTON)) {
     Serial.println("Button pressed\n");    
-    client.publish(MQTT_PREFIX"/log", "button pressed");
+    mqtt_client.publish(MQTT_PREFIX"/log", "button pressed");
     pressGarageDoorRelay();
   }
 
@@ -213,27 +261,12 @@ void loop() {
   }
 
 //  if (connectedStatusTimer.repeat()) {
-//     client.publish(MQTT_PREFIX"/log", "online");
+//     mqtt_client.publish(MQTT_PREFIX"/log", "online");
 //  }
 }
 
 
 // UTILITY
-
-String getMacAddress()
-{
-   uint8_t baseMac[6];
-
-   // Get MAC address for WiFi station
-   esp_read_mac(baseMac, ESP_MAC_WIFI_STA);
-
-   char baseMacChr[18] = {0};
-   sprintf(baseMacChr, "%02X%02X%02X%02X%02X%02X", baseMac[0], baseMac[1], baseMac[2], baseMac[3], baseMac[4], baseMac[5]);
-
-   String macAddress = String(baseMacChr);
-
-   return String(baseMacChr);
-}
 
 
 void publishWifiStrength() {
@@ -257,6 +290,6 @@ void publishWifiStrength() {
   
   char buf[300];
   sprintf(buf,"%s is %s (%d%% %ld dBm)", ssid, s, percent, signalStrength);
-  client.publish(MQTT_PREFIX"/log", buf );
+  mqtt_client.publish(MQTT_PREFIX"/log", buf );
   
 }
