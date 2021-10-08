@@ -166,7 +166,7 @@ void reportDoorStatus () {
 
 // receive an open or close command and act accordingly
 void messageReceived(String &topic, String &payload) {
-  Serial.println("incoming: " + topic + " - " + payload);
+//  Serial.println("incoming: " + topic + " - " + payload);
 
   if ( payload == "open" ) {
     if (isGarageOpen() ) {
