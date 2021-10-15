@@ -14,8 +14,8 @@
 #define THROTTLE       15 // Hall Effect Sensor Throttle
 #define PP_PIN          4 // Pressure Pad
 #define SPD_PIN        25 // Speedo hall effect pin
-#define FORWARD_PIN    19 // Direction pin: Forward
-#define REVERSE_PIN    23 // Direction pin: Reverse
+#define FORWARD_PIN    23 // Direction pin: Forward
+#define REVERSE_PIN    19 // Direction pin: Reverse
 #define BATT_LEVEL     36 // 24V VOLTAGE DIVIDER INPUT
 #define CURRENT_FAULT  3 // 31A Current Fault
 #define CURRENT_SENSOR 39 // 31A Current Sensor
@@ -38,6 +38,7 @@ RunningAverage battRA(20);   // battery reading
 // Setup the timers
 
 Neotimer serialWriteTimer        = Neotimer(1000/100); // sample out to motor driver 100/second
+
 Neotimer readThrottleTimer       = Neotimer(1000/100); // read the Throttle 100/second
 Neotimer refreshScreenTimer      = Neotimer(1000/10);  // refresh the screen only 10/second
 Neotimer readCurrentLevelTimer   = Neotimer(1000/10);  // sample the current only 10/second
@@ -53,6 +54,7 @@ void startTimers() {
   readBatteryLevelTimer.start();
   readMotorDirectionTimer.start();
 }
+
 
 /////////////////////////////
 // SCREEN SETUP
@@ -207,8 +209,8 @@ int getPressurePad() {
 ////////////////////////////////
 // SPEED CONTROL: Black Throttle - hall effect sensor
 int getHallThrottle () {
-  const int hallMin=920;
-  const int hallMax=3030; 
+  const int hallMin=915;
+  const int hallMax=3071; 
 
   // read the throttle hall sensor val
   int thtmp = analogRead(THROTTLE);
@@ -229,17 +231,33 @@ int getHallThrottle () {
 
 ////////////////////////////////
 // SPEED CONTROL: Debug / No input
-int thDebug = 0;
+float thDebug = 0;
+// how long do you want it to do a full speed up and slow down cycle? in milliseconds
+float debugCycleSpeed = 1000;
+// what is the max speed you want it to get to?
+float maxDebugSpeed = 50; // max is 127
+float debugMS = 2000.0/maxDebugSpeed*2.0;
+Neotimer debugSpeedupTimer = Neotimer(debugMS); // increment every 50ms
+
 int getDebugSpeed() { 
 
-//  thDebug = 70;
-  
-  // DEBUG 
-  if (++thDebug > 127) {
-     thDebug= 0;
+  // start the time if it isn't already;
+  if (!debugSpeedupTimer.started()) {
+    debugSpeedupTimer.start();   
   }
 
-  return thDebug;
+  if (debugSpeedupTimer.repeat()) {
+    thDebug++;
+  }
+
+  if (thDebug > maxDebugSpeed) {
+     thDebug=0;
+  }
+
+  float rads = thDebug/maxDebugSpeed*M_PI;
+  float sined = sin(rads)*maxDebugSpeed;
+//  Serial.printf("ms %d thDebug %f rads %f sined %f actual %d\n", debugMS, thDebug, rads, sined, (int)sined);
+  return (int)sined;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -446,6 +464,10 @@ int lastDirection=DIR_UNKNOWN;
 int current=0;
 char lastSPrintf[1000];
 char newSPrintf[1000];
+int thtmp=127;
+int direction=DIR_STOPPED;
+//char *dirStr;
+char dirStr[20];
 
 void loop() {
 
@@ -453,60 +475,51 @@ void loop() {
   readHz();
 
   // READ DIRECTION
-  int direction;
+  
+  
   if (readMotorDirectionTimer.repeat()) {
      direction = getMotorDirection();
-     // direction = DIR_FORWARD; // DEBUG FORCE FORWARD
+//     direction = DIR_FORWARD; // DEBUG FORCE FORWARD
+     if (direction == DIR_FORWARD) { strcpy(dirStr,"FORWARD"); }
+     if (direction == DIR_REVERSE) { strcpy(dirStr,"REVERSE");}
+     if (direction == DIR_STOPPED) { strcpy(dirStr,"STOPPED"); }
+     if (direction == DIR_UNKNOWN) { strcpy(dirStr,"UNKNOWN"); }
   }
 
   // READ THROTTLE
-  int thtmp;
   if (readThrottleTimer.repeat()) {
      thtmp = getHallThrottle();
-     //  thtmp = getDebugSpeed();
+//     thtmp = getDebugSpeed();
      //  thtmp = getPressurePad();
-
   }
   
-  getSpeedo();
+//  getSpeedo();
+    
+  // GO! Drive! Set rs232
+  if (serialWriteTimer.repeat()) {
+    // Setup the rs232 command
+    //           stop    full speed
+    // forward   127 --> 255
+    // backward  127 --> 0
+    byte serialVal=127;
+    const float speedLimiter = 1; // 1=100%, .8 = 80%
   
-  // Setup the rs232 command
-  //           stop    full speed
-  // forward   127 --> 255
-  // backward  127 --> 0
-  byte serialVal;
-  
-  if (direction == DIR_STOPPED) {
-    serialVal = 127;
-  }
-  else {
-    // 000 030 060 090 120 127
-    // 127 122 117 112 107 100 (maxReverseSpeed)     
-    const float speedLimiter = 1;
-    serialVal = thtmp * speedLimiter;
-
     // Forward is 127-255
     if (direction == DIR_FORWARD) {
-      serialVal += 127;
+      serialVal = (thtmp * speedLimiter) + 127;
     } 
-
+  
     // Reverse is 127 to 0
     else if (direction == DIR_REVERSE) {
-      serialVal = 127-serialVal;
+      serialVal = 127-(thtmp * speedLimiter);
     }
-  }
-//
-//  if (direction == DIR_REVERSE) {
-//    Serial.printf("FORWARD %d (Serial:%d)\n",thtmp, serialVal);  
-//  } 
-//  if (direction == DIR_FORWARD) {
-//    Serial.printf("FORWARD %d (rs232:%d)\n",thtmp, serialVal);  
-//  }
 
-  // GO! set rs232
-  if (serialWriteTimer.repeat()) {
+    // debug print the throttle level
+    Serial.printf("%s %d (Serial:%d)\n",dirStr, thtmp, serialVal);  
     Serial2.write(serialVal);  
   }
+
+    
 
   if (readBatteryLevelTimer.repeat()) {
     getBatteryLevel();
