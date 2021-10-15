@@ -36,3 +36,4 @@ config.h
 .DS_Store
 
 *.esp32.bin
+libraries/
