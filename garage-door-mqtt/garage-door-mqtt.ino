@@ -118,6 +118,15 @@ void pressGarageDoorRelay() {
 #define GD_UNKNOWN 5
 #define GD_ERROR 6
 
+char *getStatusString(int st) {
+  if (st == GD_OPEN)    return "open";
+  if (st == GD_CLOSED)  return "closed"; 
+  if (st == GD_OPENING) return "opening"; 
+  if (st == GD_CLOSING) return "closing"; 
+  if (st == GD_UNKNOWN) return "unknown"; 
+  if (st == GD_ERROR)   return "error"; 
+}
+
 int status = GD_UNKNOWN;
 int lastStatus = GD_UNKNOWN;
 
@@ -190,15 +199,6 @@ void publishDoorStatusChanges() {
   }
   lastStatus = status;
 
-}
-
-char *getStatusString(int st) {
-  if (st == GD_OPEN)    return "open";
-  if (st == GD_CLOSED)  return "closed"; 
-  if (st == GD_OPENING) return "opening"; 
-  if (st == GD_CLOSING) return "closing"; 
-  if (st == GD_UNKNOWN) return "unknown"; 
-  if (st == GD_ERROR)   return "error"; 
 }
 
 // read the AH1815 hall effect sensor 
