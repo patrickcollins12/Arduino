@@ -27,6 +27,7 @@ public:
   void     addValue(const float);
   void     fillValue(const float, const uint16_t);
   void     fillValue(const float);
+  void     fillValue(const int);
   
   float    getValue(const uint16_t);
 

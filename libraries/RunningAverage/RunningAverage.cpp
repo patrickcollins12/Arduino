@@ -202,6 +202,9 @@ void RunningAverage::fillValue(const float value, const uint16_t number)
 void RunningAverage::fillValue(const float value) {
    fillValue(value, _size);
 }
+void RunningAverage::fillValue(const int value) {
+   fillValue((float)value, _size);
+}
 
 
 float RunningAverage::getValue(const uint16_t index)

@@ -214,6 +214,7 @@ int getHallThrottle () {
 
   // read the throttle hall sensor val
   int thtmp = analogRead(THROTTLE);
+//  Serial.println(thtmp);
 
   // use the average of the last X reads
   thottleRunningAverage.add(thtmp);
@@ -235,7 +236,7 @@ float thDebug = 0;
 // how long do you want it to do a full speed up and slow down cycle? in milliseconds
 float debugCycleSpeed = 1000;
 // what is the max speed you want it to get to?
-float maxDebugSpeed = 50; // max is 127
+float maxDebugSpeed = 30; // max is 127
 float debugMS = 2000.0/maxDebugSpeed*2.0;
 Neotimer debugSpeedupTimer = Neotimer(debugMS); // increment every 50ms
 
@@ -475,11 +476,17 @@ void loop() {
   readHz();
 
   // READ DIRECTION
-  
+
+  bool debug=false;
   
   if (readMotorDirectionTimer.repeat()) {
-     direction = getMotorDirection();
-//     direction = DIR_FORWARD; // DEBUG FORCE FORWARD
+    
+    if (debug){
+      direction = DIR_FORWARD; // DEBUG FORCE FORWARD
+    } else {
+      direction = getMotorDirection();
+    }
+     
      if (direction == DIR_FORWARD) { strcpy(dirStr,"FORWARD"); }
      if (direction == DIR_REVERSE) { strcpy(dirStr,"REVERSE");}
      if (direction == DIR_STOPPED) { strcpy(dirStr,"STOPPED"); }
@@ -488,8 +495,11 @@ void loop() {
 
   // READ THROTTLE
   if (readThrottleTimer.repeat()) {
-     thtmp = getHallThrottle();
-//     thtmp = getDebugSpeed();
+    if (debug) {
+      thtmp = getDebugSpeed();
+    } else{
+      thtmp = getHallThrottle();
+    }
      //  thtmp = getPressurePad();
   }
   
