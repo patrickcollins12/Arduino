@@ -225,7 +225,7 @@ int getHallThrottle () {
   int thcon = constrain(avg, hallMin, hallMax);
   int thby1 = map(thcon, hallMin, hallMax, 0, 127);
 
-//  Serial.printf("Direction %d Throttle level %4d --> rs232 %3d\n", 0, thtmp, thby1);
+  Serial.printf("Throttle level %4d --> rs232 %3d\n", thtmp, thby1);
   return thby1;
 }
 
@@ -525,7 +525,7 @@ void loop() {
     }
 
     // debug print the throttle level
-    Serial.printf("%s %d (Serial:%d)\n",dirStr, thtmp, serialVal);  
+    Serial.printf("OOF %s %d (Serial:%d)\n",dirStr, thtmp, serialVal);  
     Serial2.write(serialVal);  
   }
 
